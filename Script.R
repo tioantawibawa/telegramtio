@@ -12,7 +12,11 @@ library(lubridate)  # working with dates in tibbles / data frames
 library(plotly)     # Interactive plots
 library(corrplot)   # Visuazlize correlation plots
 library(ps)
+library(xts)
 library(stockPortfolio)
+
+setwd("D:/R project/Telegram bot")
+
 bot <- Bot(token = '634542972:AAEm9EiwIdCEyd4GCAWuCH63bt-TcKYeoWI')
 
 updater <- Updater(token='634542972:AAEm9EiwIdCEyd4GCAWuCH63bt-TcKYeoWI')
@@ -20,7 +24,7 @@ dispatcher <- updater$dispatcher
   
   #1
   start <- function(bot, update){
-    bot$sendMessage(chat_id = update$message$chat_id, text = "Selamat datang, dalam bot Uji Coba ATM cash management, Silahkan ketikan /caps<spasi>Terminal ID untuk mengetahui prediksi Cash withdrawal dalam 7 hari kedepan.")
+    bot$sendMessage(chat_id = update$message$chat_id, text = "Selamat datang, dalam bot Uji Coba ATM cash management, Silahkan ketikan /cash<spasi>(Terminal ID),(jangka waktu) untuk mengetahui prediksi Cash withdrawal.")
   }
 start_handler <- CommandHandler('start', start)
 dispatcher$add_handler(start_handler)
@@ -93,7 +97,7 @@ lq45 <- function(bot, update){
   
   
   # Mapping the Functions --------------------------------------------------------
-  from <- "2018-06-06"
+  from <- "2017-01-01"
   sp_500 <- sp_500 %>%
     mutate(
       stock.prices = map(singkatan,
@@ -156,8 +160,9 @@ lq45 <- function(bot, update){
                          arrowsize = .5,
                          ax = 20,
                          ay = -40)
-  export(pl2, file = "saham.jpeg")
-  bot$sendPhoto(chat_id = update$message$chat_id,photo ='saham.jpeg', caption = 'Grafik Prediksi Return dan Reward Saham LQ45')
+  export(pl2, file = "D:/R project/Telegram bot/saham.jpeg")
+
+  bot$sendPhoto(chat_id = update$message$chat_id,photo ='D:/R project/Telegram bot/saham.jpeg', caption = 'Grafik Prediksi Return dan Reward Saham LQ45')
   #    bot$sendMessage(chat_id = update$message$chat_id, text = paste("----------------\nNo id pengajuan : ","1","; Predicted score : ","2", "\n----------------\n"))
   #  bot$sendMessage(chat_id = update$message$chat_id, text = readline("masukan nama kolom yang berisi variabel tahun : "))
 }
@@ -215,46 +220,79 @@ echo <- function(bot, update){
       #    html_attr("href") %>%
       html_text()
     final_name <- gsub("[^0-9A-Za-z///' ]","" , tio[1] ,ignore.case = TRUE)
+    final_name <- gsub("LinkedIn","" , final_name ,ignore.case = TRUE)
+    final_name <- gsub("Youtube","" , final_name ,ignore.case = TRUE)
+    final_name <- gsub("Facebook","" , final_name ,ignore.case = TRUE)  
+    final_name <- gsub("Instagram","" , final_name ,ignore.case = TRUE)
+    final_name <- gsub("Twitter","" , final_name ,ignore.case = TRUE)
+    final_name <- gsub("Kaskus","" , final_name ,ignore.case = TRUE)
   }
   bot$sendMessage(chat_id = update$message$chat_id, text = final_name)
 }
 echo_handler <- MessageHandler(echo, Filters$text)
 dispatcher$add_handler(echo_handler)
 #4
-caps <- function(bot, update, args){
-  text_caps <- toupper(paste(args, collapse = ' '))
+cash <- function(bot, update, args){
+  text_awal <- toupper(paste(args, collapse = ' '))
+  text_awal <- as.data.frame(unlist(strsplit(text_awal, ",")))
+  text_caps <- as.vector(text_awal[1,])
+  if (is.na(text_awal[2,])==TRUE)
+  {
+    periode <- 7
+  } else
+  {
+    periode <- as.numeric(as.character(text_awal[2,]))
+  }
   nama <- paste0("D:/R project/Telegram bot/",text_caps,".csv")
   atm <- read.csv(nama)
   atm <- atm[,-1]
   library(lubridate)
   atm$Date <- ymd(atm$Date)
   colnames(atm)[2] <- "Withdrawals"
-  atm <- ts(atm$Withdrawals, frequency = 7,start = atm$Date[1])
+  library(xts)
+  atm_ts <- xts(atm$Withdrawals, frequency = 7,order.by = ymd(atm$Date))
   set.seed(1)
-  fit <- nnetar(atm, lambda = 0.5)
-  fcast <- forecast(fit,h=7, level = c(90, 95))
+  fit <- nnetar(atm_ts, lambda = 0.5)
+  fcast <- forecast(fit,h=periode, level = c(90, 95))
+  plot(fcast, xlab="Time", ylab="Nominal")
+  lines(fcast$fitted, col="red")
+  lines(fcast$mean, col="green", lty=2)
+  dev.copy(png,'myplot.png')
+  dev.off()
+#============  
   cek <- as.data.frame(fcast)
   total <- round(sum(cek[,1]),0)
-  text_caps2 <- paste("----------------\nTotal Prediksi Jumlah Penarikan dalam 7 hari kedepan : Rp.",total, "\n----------------\n")
-  bot$sendMessage(chat_id = update$message$chat_id, text = text_caps2)
+for (i in 1:10) {
+  set.seed(1)
+    fcast2 <- forecast(fit,h=i, level = c(90, 95))
+    cek2 <- as.data.frame(fcast2)
+    total2 <- round(sum(cek2[,1]),0)
+    print(as.vector(i))
+    if(total2 > 800000000) break
+  }
+  text_caps2 <- paste("----------------\nTotal Prediksi Jumlah Penarikan dalam",periode,"hari kedepan : Rp.",total, "\n----------------\n","\n Jika dilakukan pengisian sekarang, Kas ATM ini akan habis dalam",i-1,"hari ke depan")
+
+    bot$sendPhoto(chat_id = update$message$chat_id,photo ='D:/R project/Telegram bot/myplot.png', caption = text_caps2)
 }
 
-caps_handler <- CommandHandler('caps', caps, pass_args = TRUE)
-dispatcher$add_handler(caps_handler)
+cash_handler <- CommandHandler('cash', cash, pass_args = TRUE)
+dispatcher$add_handler(cash_handler)
 #==================   
 #4.1
 saham <- function(bot, update, args){
   text_caps <- toupper(paste(args, collapse = ' '))
   mySymbol = text_caps
-  getSymbols(mySymbol, from=from, to=Sys.Date())
+ getSymbols(mySymbol, from="2018-01-01", to=Sys.Date())
   chartSeries(Cl(get(mySymbol)),name=mySymbol,TA='addBBands();
               addBBands(draw="p");
               addVo();
               addMACD()',
               theme="white")
-  dev.copy(jpeg,'tio2.jpeg')
+  
+  dev.copy(jpeg,'D:/R project/Telegram bot/new.jpeg')
   dev.off()          
-  bot$sendPhoto(chat_id = update$message$chat_id, photo = 'tio2.jpeg',caption = paste("informasi saham :",text_caps))
+  
+  bot$sendPhoto(chat_id = update$message$chat_id, photo = 'D:/R project/Telegram bot/new.jpeg',caption = paste("informasi saham :",text_caps))
 }
 
 saham_handler <- CommandHandler('saham', saham, pass_args = TRUE)
@@ -306,20 +344,21 @@ rw <- function(bot, update, args){
     gather(key = "Simulation", value = "Stock.Price", -(Day))
   # Visualize simulation
   
-  gg <- price_sim %>%
-    ggplot(aes(x = Day, y = Stock.Price, Group = Simulation)) + 
+  gg <- ggplot(data = price_sim,aes(x = Day, y = Stock.Price, Group = Simulation))+
     geom_line(alpha = 0.6,color="blue") +
     ggtitle(str_c("MA: ", M, 
                   " Monte Carlo Simulations for Prices Over ", N, 
-                  " Trading Days"))
-  ggsave("rplo.png",plot = gg)  
+                  " Trading Days")) 
+  path1 <- paste0("D:/R project/Telegram bot/",substr(mySymbol,1,4),".png")
+  ggsave(path1,plot = gg)  
   end_stock_prices <- price_sim %>% 
     filter(Day == max(Day))
   probs <- c(.005, .025, .25, .5, .75, .975, .995)
   dist_end_stock_prices <- round(quantile(end_stock_prices$Stock.Price, probs = probs),0)
   bawah <- dist_end_stock_prices[1]
   atas <- dist_end_stock_prices[7]
-  bot$sendPhoto(chat_id = update$message$chat_id, photo = 'rplo.png',caption = paste("Prediksi saham :",simbol,"given from the result of my simulation, stock may reach the price of Rp.",atas," in",periode,"days or crash to a Rp.",bawah,"low."))
+
+  bot$sendPhoto(chat_id = update$message$chat_id, photo = path1,caption = paste("Prediksi saham :",simbol,"given from the result of my simulation, stock may reach the price of Rp.",atas," in",periode,"days or crash to a Rp.",bawah,"low."))
 }
 
 rw_handler <- CommandHandler('prediksi', rw, pass_args = TRUE)
